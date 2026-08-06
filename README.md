@@ -87,9 +87,9 @@ Diagnostics use stable codes so Air prompts, tests, docs, and future UI surfaces
 4. Add safe-action policy metadata and optional Air approval prompts; keep execution outside the diagnostic server.
 5. Add a native Air adapter only after JetBrains publishes a supported extension SDK.
 
-## Extraction note
+## Repository provenance
 
-The initial implementation may live temporarily under `zed-monorepo/incubator/zed-jetbrains-air`. It is intentionally self-contained so it can be moved unchanged to the root of `zed-pkg/zed-jetbrains-air`.
+This dedicated repository was promoted from `zed-pkg/zed-monorepo#11` at source head `0820b5f4a0120c4b6831bdd4e92cc254e098ee92`. Its extraction history is preserved, and the initial publication adds only reproducible dependency locking, immutable GitHub Action pins, and this provenance record.
 
 ## License
 
