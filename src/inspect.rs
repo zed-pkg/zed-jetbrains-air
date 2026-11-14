@@ -311,8 +311,16 @@ mod tests {
         use std::os::unix::fs::symlink;
         let project_dir = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        fs::write(outside.path().join("manifest.toml"), "[package]\\norg = \\"outside\\"\\nname = \\"leak\\"\\nversion = \\"1.0.0\\"\\n").unwrap();
-        fs::write(outside.path().join("lock.toml"), "version = 1\\n").unwrap();
+        fs::write(
+            outside.path().join("manifest.toml"),
+            r#"[package]
+org = "outside"
+name = "leak"
+version = "1.0.0"
+"#,
+        )
+        .unwrap();
+        fs::write(outside.path().join("lock.toml"), "version = 1\n").unwrap();
         fs::create_dir(outside.path().join("modules")).unwrap();
         symlink(outside.path().join("manifest.toml"), project_dir.path().join(".zpkg.toml")).unwrap();
         symlink(outside.path().join("lock.toml"), project_dir.path().join(".zpkg.lock")).unwrap();
