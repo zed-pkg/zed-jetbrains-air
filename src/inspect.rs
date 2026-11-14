@@ -14,6 +14,8 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
     let manifest_path = root.join(".zpkg.toml");
     let lock_path = root.join(".zpkg.lock");
     let modules_path = root.join("zed_modules");
+    let manifest_regular = regular_marker(&manifest_path);
+    let lock_regular = regular_marker(&lock_path);
     let cli = inspect_cli();
     let mut package = PackageState::default();
     let mut diagnostics = Vec::new();
@@ -27,7 +29,7 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
         ));
     }
 
-    let manifest_value = if manifest_path.exists() {
+    let manifest_value = if manifest_regular {
         package.manifest_path = Some(path_text(&manifest_path));
         match parse_toml(&manifest_path) {
             Ok(value) => {
@@ -52,6 +54,14 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
                 None
             }
         }
+    } else if marker_present(&manifest_path) {
+        diagnostics.push(diagnostic(
+            "ZED005",
+            Severity::Error,
+            "The Zed manifest marker is not a local regular file.",
+            "Replace the symlink or directory with a reviewed local .zpkg.toml file.",
+        ));
+        None
     } else {
         diagnostics.push(diagnostic(
             "ZED002",
@@ -62,7 +72,7 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
         None
     };
 
-    let lock_value = if lock_path.exists() {
+    let lock_value = if lock_regular {
         package.lock_path = Some(path_text(&lock_path));
         match parse_toml(&lock_path) {
             Ok(value) => {
@@ -80,7 +90,14 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
             }
         }
     } else {
-        if manifest_path.exists() {
+        if marker_present(&lock_path) {
+            diagnostics.push(diagnostic(
+                "ZED006",
+                Severity::Error,
+                "The Zed lock marker is not a local regular file.",
+                "Replace the symlink or directory with a reviewed local .zpkg.lock file.",
+            ));
+        } else if manifest_regular {
             diagnostics.push(diagnostic(
                 "ZED003",
                 Severity::Warning,
@@ -91,7 +108,7 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
         None
     };
 
-    if lock_path.exists() && !manifest_path.exists() {
+    if lock_regular && !marker_present(&manifest_path) {
         diagnostics.push(diagnostic(
             "ZED004",
             Severity::Warning,
@@ -100,7 +117,8 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
         ));
     }
 
-    if modules_path.exists() {
+    if fs::symlink_metadata(&modules_path)
+        .is_ok_and(|metadata| metadata.file_type().is_dir()) {
         package.modules_path = Some(path_text(&modules_path));
     } else if manifest_value.is_some() && lock_value.is_some() {
         diagnostics.push(diagnostic(
@@ -165,13 +183,24 @@ fn discover_root(start: &Path) -> PathBuf {
     let fallback = current.clone();
 
     loop {
-        if current.join(".zpkg.toml").exists() || current.join(".zpkg.lock").exists() {
+        if marker_present(&current.join(".zpkg.toml")) || marker_present(&current.join(".zpkg.lock")) {
             return current;
         }
         if !current.pop() {
             return fallback;
         }
     }
+}
+
+// Never follow symlinks while deciding which local package files are trusted.
+// Include malformed markers during discovery so diagnostics stay at their root.
+fn marker_present(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
+fn regular_marker(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn inspect_cli() -> CliState {
@@ -264,6 +293,38 @@ mod tests {
         let report = project(directory.path()).unwrap();
         assert_eq!(report.package.direct_dependency_count, 1);
         assert!(report.diagnostics.iter().any(|item| item.code == "ZED003"));
+    }
+
+    #[test]
+    fn forged_manifest_directory_is_not_parsed_or_admitted() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::create_dir(directory.path().join(".zpkg.toml")).unwrap();
+        let report = project(directory.path()).unwrap();
+        assert_eq!(report.root, directory.path().to_string_lossy());
+        assert!(!report.package.manifest_valid);
+        assert!(report.diagnostics.iter().any(|item| item.code == "ZED005"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn package_markers_and_materialization_do_not_follow_external_symlinks() {
+        use std::os::unix::fs::symlink;
+        let project_dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("manifest.toml"), "[package]\\norg = \\"outside\\"\\nname = \\"leak\\"\\nversion = \\"1.0.0\\"\\n").unwrap();
+        fs::write(outside.path().join("lock.toml"), "version = 1\\n").unwrap();
+        fs::create_dir(outside.path().join("modules")).unwrap();
+        symlink(outside.path().join("manifest.toml"), project_dir.path().join(".zpkg.toml")).unwrap();
+        symlink(outside.path().join("lock.toml"), project_dir.path().join(".zpkg.lock")).unwrap();
+        symlink(outside.path().join("modules"), project_dir.path().join("zed_modules")).unwrap();
+        let report = project(project_dir.path()).unwrap();
+        assert!(!report.package.manifest_valid);
+        assert!(!report.package.lock_valid);
+        assert!(report.package.modules_path.is_none());
+        assert!(report.diagnostics.iter().any(|item| item.code == "ZED005"));
+        assert!(report.diagnostics.iter().any(|item| item.code == "ZED006"));
+        // The outside content must never acquire the local package's identity.
+        assert_ne!(report.package.org.as_deref(), Some("outside"));
     }
 
     #[test]
