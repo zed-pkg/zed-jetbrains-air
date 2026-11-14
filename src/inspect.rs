@@ -117,8 +117,7 @@ pub fn project(start: &Path) -> Result<ProjectReport> {
         ));
     }
 
-    if fs::symlink_metadata(&modules_path)
-        .is_ok_and(|metadata| metadata.file_type().is_dir()) {
+    if fs::symlink_metadata(&modules_path).is_ok_and(|metadata| metadata.file_type().is_dir()) {
         package.modules_path = Some(path_text(&modules_path));
     } else if manifest_value.is_some() && lock_value.is_some() {
         diagnostics.push(diagnostic(
@@ -183,7 +182,9 @@ fn discover_root(start: &Path) -> PathBuf {
     let fallback = current.clone();
 
     loop {
-        if marker_present(&current.join(".zpkg.toml")) || marker_present(&current.join(".zpkg.lock")) {
+        if marker_present(&current.join(".zpkg.toml"))
+            || marker_present(&current.join(".zpkg.lock"))
+        {
             return current;
         }
         if !current.pop() {
@@ -199,8 +200,7 @@ fn marker_present(path: &Path) -> bool {
 }
 
 fn regular_marker(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .is_ok_and(|metadata| metadata.file_type().is_file())
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn inspect_cli() -> CliState {
@@ -322,9 +322,21 @@ version = "1.0.0"
         .unwrap();
         fs::write(outside.path().join("lock.toml"), "version = 1\n").unwrap();
         fs::create_dir(outside.path().join("modules")).unwrap();
-        symlink(outside.path().join("manifest.toml"), project_dir.path().join(".zpkg.toml")).unwrap();
-        symlink(outside.path().join("lock.toml"), project_dir.path().join(".zpkg.lock")).unwrap();
-        symlink(outside.path().join("modules"), project_dir.path().join("zed_modules")).unwrap();
+        symlink(
+            outside.path().join("manifest.toml"),
+            project_dir.path().join(".zpkg.toml"),
+        )
+        .unwrap();
+        symlink(
+            outside.path().join("lock.toml"),
+            project_dir.path().join(".zpkg.lock"),
+        )
+        .unwrap();
+        symlink(
+            outside.path().join("modules"),
+            project_dir.path().join("zed_modules"),
+        )
+        .unwrap();
         let report = project(project_dir.path()).unwrap();
         assert!(!report.package.manifest_valid);
         assert!(!report.package.lock_valid);
