@@ -300,7 +300,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         fs::create_dir(directory.path().join(".zpkg.toml")).unwrap();
         let report = project(directory.path()).unwrap();
-        assert_eq!(report.root, directory.path().to_string_lossy());
+        assert_eq!(Path::new(&report.root), fs::canonicalize(directory.path()).unwrap());
         assert!(!report.package.manifest_valid);
         assert!(report.diagnostics.iter().any(|item| item.code == "ZED005"));
     }
